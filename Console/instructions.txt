@@ -1,0 +1,5 @@
+rect 1 2 10 20 red filled
+rect 6 2 4 10 red
+line 1 2 10 row red filled
+line 1 2 10 column red filled
+text 1 2 red some text
