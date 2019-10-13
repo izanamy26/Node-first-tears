@@ -42,43 +42,53 @@ fs.readFile('instructions.txt', function (err, logData) {
 
     console.log(text);
 
-    let painting = text.reduce((prev, item) => {
+    let figures = text.reduce((prev, item) => {
         let [figure, x, y, ...params] = item.split(' ');
+        x = Number(x);
+        y = Number(y);
     
          switch (figure) {
              case 'rect':
-                 let [width, height, color, filled] = params;
-                 getRect({figure, x, y, width, height, color, filled});
+                 let [width, height, colorRect, filled] = params;
+                 width = Number(width);
+                 height = Number(height);
+                 prev.push(getRect( x, y, width, height, colorRect, filled ));
                  break;
-         }   
 
-
-
-
-        return [];
+            case 'line':
+                let [length, position, colorLine] = params;
+                length = Number(length);
+                prev.push(getLine( x, y, length, position, colorLine ));
+                break;  
+                
+            case 'text':
+                let [colorText, ...text] = params;
+                text = text.join(' ');
+                prev.push(getText( x, y, text, colorText ));
+                break;    
+         }  
+        return prev;
     }, []);
 
-    //console.log(painting);
+    //console.log('FIGURES : ');
+    //console.log(figures);
+
+    var canvas = joinCanvases(figures);
+
+    console.log(canvas);
 
     //console.log('\x1b[46m', 'I am cyan');  //cyan
 
 });
 
-function getRect(params) {
-    console.log(params);
-
-    let x = Number(params.x);
-    let y = Number(params.y);
-    let width = Number(params.width);
-    let height = Number(params.height);
-
+function getRect( x, y, width, height, color, filled ) {
     let canvas = [];
 
     for (let i = 0; i <= y + height; i++) {
        let row = Array(width + x ).fill(' ');
 
        if (i >= y && i <= y + height) {
-           if (params.filled === 'filled') {
+           if (filled === 'filled') {
             row.fill('*', x, x + width);
            } else {
             row.fill('*', x, x + 1);
@@ -86,13 +96,83 @@ function getRect(params) {
            }
        }
 
-       if ((i == y || i == y + height) && params.filled === undefined) {
+       if ((i == y || i == y + height) && filled === undefined) {
             row.fill('*', x, x + width);
        }
        
         canvas.push(row);
     }
 
-    console.log('canvas: ');
+    return canvas;
+}
+
+function getLine( x, y, length, position, color ) {
+        let canvas = [];
+
+        switch(position) {
+            case 'row':
+                for (let i = 0; i <= y; i++) {
+                    let row = Array(x + length).fill(' ');
+
+                    if (i == y) {
+                        row.fill('-', x,  x + length);     
+                    }
+                    
+                    canvas.push(row);
+                }
+                break;
+
+            case 'column':
+                    for (let i = 0; i <= y + length; i++) {
+                        let row = Array(x + 1).fill(' ');
+    
+                        if (i >= y) {
+                            row.fill('|', x,  x + 1);     
+                        }
+                        canvas.push(row);
+                    }
+                break;    
+        }
+
+    return canvas;
+}
+
+function getText(x, y, text, color) {
+    let canvas = [];
+     text = text.split('');
+
+    for (let i = 0; i <= y; i++) {
+        let row = Array(x + text.length).fill(' ');
+
+        if (i == y) {
+            row = Array(x).fill(' ', 0 , x)
+            row.push(...text);     
+        }
+        
+        canvas.push(row);
+    }
+
+    return canvas;
+} 
+
+
+function joinCanvases(figures) {
+    var canvas = [];
+
+    for (let i = 0; i < figures.length; i++) {
+        let figure = figures[i];
+        for (let y = 0; y < figure.length; y++) {
+            if (canvas[y] === undefined) {
+                canvas[y] = [];     
+            }
+            
+            for (let x = 0; x < figure[y].length; x++) {
+                // поправить, чтобы не переписывало пробелами
+                canvas[y][x] = figure[y][x]; 
+            }
+        }
+    }
+
+    console.log('CANVAS : ');
     console.log(canvas);
 }
