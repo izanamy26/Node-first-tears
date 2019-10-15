@@ -34,41 +34,44 @@ var fs = require('fs');
    };
    console.log(colors.bg.Blue, colors.fg.White , "I am white message with blue background", colors.Reset) ;*/
 
+const handlers = {
+    'rect': ([x, y, width, height, colorRect, filled]) => {
+        x = Number(x);
+        y = Number(y);
+        width = Number(width);
+        height = Number(height);
+        return getRect({ x, y, width, height, colorRect, filled });
+    },
 
-fs.readFile('instructions.txt', function (err, logData) {
+    'line': ([x, y, length, position, colorLine]) => {
+        x = Number(x);
+        y = Number(y);
+        length = Number(length);
+        return getLine({ x, y, length, position, colorLine });
+    },
+
+    'text': ([x, y, colorText, ...text]) => {
+        x = Number(x);
+        y = Number(y);
+        text = text.join(' ');
+        return getText({ x, y, text, colorText });
+    }
+}
+
+
+
+
+fs.readFile('instructions.txt', "utf8", (err, logData) => {
 	if (err) throw err;
 
-    var text = logData.toString().split("\r\n");
+    var text = logData.split("\r\n");
 
     console.log(text);
 
-    let figures = text.reduce((prev, item) => {
-        let [figure, x, y, ...params] = item.split(' ');
-        x = Number(x);
-        y = Number(y);
-    
-         switch (figure) {
-             case 'rect':
-                 let [width, height, colorRect, filled] = params;
-                 width = Number(width);
-                 height = Number(height);
-                 prev.push(getRect( x, y, width, height, colorRect, filled ));
-                 break;
-
-            case 'line':
-                let [length, position, colorLine] = params;
-                length = Number(length);
-                prev.push(getLine( x, y, length, position, colorLine ));
-                break;  
-                
-            case 'text':
-                let [colorText, ...text] = params;
-                text = text.join(' ');
-                prev.push(getText( x, y, text, colorText ));
-                break;    
-         }  
-        return prev;
-    }, []);
+    let figures = text.map((item) => {
+        let [figure, ...params] = item.split(' ');
+        return handlers[figure](params);
+    });
 
     //console.log('FIGURES : ');
     //console.log(figures);
@@ -81,7 +84,7 @@ fs.readFile('instructions.txt', function (err, logData) {
 
 });
 
-function getRect( x, y, width, height, color, filled ) {
+const getRect = ({ x, y, width, height, color, filled }) => {
     let canvas = [];
 
     for (let i = 0; i <= y + height; i++) {
@@ -106,7 +109,7 @@ function getRect( x, y, width, height, color, filled ) {
     return canvas;
 }
 
-function getLine( x, y, length, position, color ) {
+const getLine = ({ x, y, length, position, color }) => {
         let canvas = [];
 
         switch(position) {
@@ -137,7 +140,7 @@ function getLine( x, y, length, position, color ) {
     return canvas;
 }
 
-function getText(x, y, text, color) {
+const getText = ({x, y, text, color}) => {
     let canvas = [];
      text = text.split('');
 
@@ -156,7 +159,7 @@ function getText(x, y, text, color) {
 } 
 
 
-function joinCanvases(figures) {
+const joinCanvases = (figures) => {
     var canvas = [];
 
     for (let i = 0; i < figures.length; i++) {
@@ -167,7 +170,10 @@ function joinCanvases(figures) {
             }
             
             for (let x = 0; x < figure[y].length; x++) {
-                // поправить, чтобы не переписывало пробелами
+               if (canvas[y][x] !== undefined && canvas[y][x] !== ' ' && figure[y][x] === ' ') {
+                    continue;
+               }
+
                 canvas[y][x] = figure[y][x]; 
             }
         }
