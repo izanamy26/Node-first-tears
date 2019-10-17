@@ -1,4 +1,4 @@
-var fs = require('fs');
+const fs = require('fs');
 
 /*const colors = {
     Reset: "\x1b[0m",
@@ -35,45 +35,60 @@ var fs = require('fs');
 
 const Drawer = {
     readFile: (file) => {
-       return new Promise((res, rej) => {      // Promise { <pending> }
-            fs.readFile('instructions.txt', "utf8", (err, logData) => {
-                if (err) throw err;
-                var text = logData.split("\r\n");
+       return new Promise((resolve, reject) => {      // Promise { <pending> }
+           fs.readFile( file, "utf8", (err, logData) => {   
+                if (err) {
+                    reject(err);
+                } 
+
+                resolve(()=> {
+                    let text = logData.split("\n");
+
+                    // console.log('figure: ', figure, '  ', Drawer.handlers[figure]);    
+
+                    // if (Drawer.handlers[figure] === undefined) {
+                    //     throw "Can't find figure " + figure;
+                    // }   
+
             
-                let figures = text.map((item) => {
-                    let [figure, ...params] = item.split(' ');
-                    return Drawer[figure](params);
+                    let figures = text.map((item) => {
+                        let [figure, ...params] = item.split(' '); 
+
+                        return Drawer.handlers[figure](params);
+                    });
+            
+                let canvas = joinCanvases(figures);     
+                
+                return canvas;
                 });
-            
-                let canvas = joinCanvases(figures);
-                console.log('CANVAS : ');
-                console.log(canvas);
             });
        });
     },
 
-    rect: ([x, y, width, height, colorRect, filled]) => {
-        x = Number(x);
-        y = Number(y);
-        width = Number(width);
-        height = Number(height);
-        return getRect({ x, y, width, height, colorRect, filled });
-    },
-
-    line: ([x, y, length, position, colorLine]) => {
-        x = Number(x);
-        y = Number(y);
-        length = Number(length);
-        return getLine({ x, y, length, position, colorLine });
-    },
-
-    text: ([x, y, colorText, ...text]) => {
-        x = Number(x);
-        y = Number(y);
-        text = text.join(' ');
-        return getText({ x, y, text, colorText });
+    handlers: {
+        rect: ([x, y, width, height, colorRect, filled]) => {
+            x = Number(x);
+            y = Number(y);
+            width = Number(width);
+            height = Number(height);
+            return getRect({ x, y, width, height, colorRect, filled });
+        },
+    
+        line: ([x, y, length, position, colorLine]) => {
+            x = Number(x);
+            y = Number(y);
+            length = Number(length);
+            return getLine({ x, y, length, position, colorLine });
+        },
+    
+        text: ([x, y, colorText, ...text]) => {
+            x = Number(x);
+            y = Number(y);
+            text = text.join(' ');
+            return getText({ x, y, text, colorText });
+        }
     }
-}   
+};   
 
 
 const getRect = ({ x, y, width, height, color, filled }) => {
