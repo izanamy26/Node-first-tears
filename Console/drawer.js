@@ -34,33 +34,29 @@ const fs = require('fs');
    console.log(colors.bg.Blue, colors.fg.White , "I am white message with blue background", colors.Reset) ;*/
 
 const Drawer = {
-    readFile: (file) => {
+    checkInstructions: (instructions) => {
+
+    },
+
+    getFigures: (instructions) => {
+        console.log('instructions:  ', instructions);
        return new Promise((resolve, reject) => {      // Promise { <pending> }
-           fs.readFile( file, "utf8", (err, logData) => {   
-                if (err) {
-                    reject(err);
-                } 
+            resolve(()=> {
+               
 
-                resolve(()=> {
-                    let text = logData.split("\n");
+                let figures = instructions.map((item) => {
+                    let [figure, ...params] = item.split(' '); 
 
-                    // console.log('figure: ', figure, '  ', Drawer.handlers[figure]);    
-
-                    // if (Drawer.handlers[figure] === undefined) {
-                    //     throw "Can't find figure " + figure;
-                    // }   
-
-            
-                    let figures = text.map((item) => {
-                        let [figure, ...params] = item.split(' '); 
-
-                        return Drawer.handlers[figure](params);
-                    });
-            
-                let canvas = joinCanvases(figures);     
-                
-                return canvas;
+                    return Drawer.handlers[figure](params);
                 });
+
+                console.log('figures: ', figures);    
+
+                let canvas = joinCanvases(figures);     
+
+                console.log('canvas: ', canvas);
+            
+                return canvas;
             });
        });
     },

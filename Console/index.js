@@ -10,12 +10,15 @@ const app = express();
 
 const jsonParser = express.json();
 
-//  curl -H "Content-Type: application/json" -H "iv-user: nastya" -X POST -d '{"user":"nastya","pass":"888"}' http://localhost:3000/cimages
+//   curl -H "Content-Type: application/json" -H "iv-user: nastya" -X POST -d '{"text":["rect 6 2 4 10 red"]}' http://localhost:3000/cimages
 app.post('/cimages', jsonParser, (request, response)=> {
+    console.log('request: ', request.body);
+
+
     if(!request.body) 
         return response.sendStatus(400);
     
-    const text = request.body;
+    const text = request.body.text;
     const user = request.headers['iv-user'];     
     const guid = getGuid();
 
@@ -31,7 +34,7 @@ app.post('/cimages', jsonParser, (request, response)=> {
 app.get('/cimages/:id', (request, response) => {
     const id = request.params['id'];
 
-    let path = './storage/' + id + '.cimage';
+    let path = 'storage/' + id + '.cimage';
     let flag = request.query.image !== undefined;
 
     console.log('flag: ', flag);
@@ -42,19 +45,32 @@ app.get('/cimages/:id', (request, response) => {
         }
     });
 
+    fs.readFile(path, "utf8", (err, data) => {
+        if (err) {
 
-    if (flag) {
-        drawer.readFile(path)
-            .then((result) => response.send(result));
-    } else {
-        fs.readFile(path, "utf8", (err, data) => {
-            if (err) {
-    
-            }
-    
-            response.send(data);      
-        });
-    }
+        }
+
+       let instructions = JSON.parse(data); 
+
+       console.log('instructions: ', instructions.text);
+
+        if (flag) {
+            data = drawer.getFigures(instructions.text)
+                .then((result) => { 
+                    response.send(result);
+                });
+        }
+
+        response.send(data);      
+    });
+
+
+    // if (flag) {
+    //     drawer.getFigures(path)
+    //         .then((result) => response.send(result));
+    // } else {
+  
+    // }
 });
 
 
