@@ -1,15 +1,15 @@
 const drawer = require('./drawer.js');
 const http = require('http');
+const util = require('util');
 const express = require('express');
 const fs = require('fs');
 
 const app = express();
 const FOLDER = 'storage/';
 
-/* drawer.readFile('instructions.txt').then((res) => console.log(res()));
- */
 
 const jsonParser = express.json();
+
 
 //   curl -H "Content-Type: application/json" -H "iv-user: nastya" -X POST -d '{"text":["rect 6 2 4 10 red"]}' http://localhost:3000/cimages
 // Create the file with instruction
@@ -33,77 +33,107 @@ app.post('/cimages', jsonParser, (request, response)=> {
 });
 
 
+/*
+    Получение всех гуидов в папке вообще или конкретного пользователя
+    curl -X GET http://localhost:3000/cimages/ -H 'Host: localhost:3000'
+    curl -H "Content-Type: application/json" http://localhost:3000/cimages/?user=margo
+*/
 app.get('/cimages/', (request, response) => {
-    const files = fs.readdirSync( FOLDER );
-    let guids = files.map((file) => {
-        return file.replace('.cimage', '');
-    });
+    const dir = util.promisify(fs.readdir);
+    const user = request.query.user;
+    
+    dir( FOLDER )
+    .then(( files ) => {
+        if ( user !== undefined ) {
+            let userFiles = [];  
 
-    response.send(guids);
+            files.forEach((fileName, index) => {
+                let contentFile = util.promisify( fs.readFile ); 
+                contentFile( FOLDER + fileName, "utf-8" )
+                .then(content => {
+                    let jsonContent = JSON.parse(content);
+
+                    if (jsonContent.user === user) {
+                        userFiles.push(fileName);
+                    }
+
+                    if (index === files.length - 1) { // Уточнить этот вопрос, как в другом месте
+                        response.send(userFiles);
+                    }   
+                }).catch( error => {
+                    console.log('Error of getting content of file: ', error);
+                });
+            });    
+        } else {
+            let guids = files.map((file) => {
+                return file.replace('.cimage', '');
+            });
+        
+            response.send(guids);
+        }    
+    })
+    .catch(( error ) => { 
+        console.log('Error of reading dir: ', error)
+    });
 });
 
 
-
-// curl -H "Content-Type: application/json" -H "iv-user: nastya" http://localhost:3000/cimages/
-// Get a content of file
-app.get('/cimages/:id', (request, response) => {
-    const id = request.params['id'];
-
-    if (Object.keys(request.query).length > 0) {
-        var requestGuids = request.query.user !== undefined; 
-        var user = ( requestGuids ) 
-                ? request.query.user
-                : Object.keys(request.query)[0];
+/*
+    Получение количества файлов по данному пользователю
+    curl -X GET 'http://localhost:3000/stat/cimages?nastya' -H 'Host: localhost:3000'
+*/
+app.get('/stat/cimages', ( request, response ) => {
+    if ( Object.keys(request.query).length !== 1 ) {
+        response.status('401').send('Неверный запрос');
     }
 
-    let path = FOLDER + id + '.cimage';
+    const user = Object.keys( request.query )[0];    
+    const dir = util.promisify(fs.readdir);
 
-    if ( user !== undefined ) {
-        let files = fs.readdirSync( FOLDER );
+    dir( FOLDER )
+    .then( files => {
+        let contentFile = util.promisify( fs.readFile ); 
+        let countUserFiles = 0;
 
-        let guids = files.reduce((packetGuid, fileName) => {
-            let content = fs.readFileSync( FOLDER + fileName, "utf-8" );
+        files.forEach(( fileName, index ) => {
+            contentFile( FOLDER + fileName, "utf-8" )
+                .then(content => {
+                    let jsonContent = JSON.parse(content);
 
-            let jsonContent = JSON.parse(content);
-        
-            if (jsonContent.user === user) {
-                packetGuid.push(jsonContent.guid);
-            }
+                    countUserFiles += Number(jsonContent.user === user);
 
-            return packetGuid;
-        }, []);
+                    if (index === files.length - 1) { // Уточнить этот вопрос, как в другом месте
+                        response.send(JSON.stringify({ user: user, count: countUserFiles }));
+                    }    
+                }).catch( error => {
+                    console.log('Error of getting content of file: ', error);
+                });
+        });
+    }).catch(error => {
+        console.log( 'Error of getting file\'s stat: ', error );
+    });
+});
 
-        response.send( (requestGuids) ? guids : JSON.stringify({ user: user, count: guids.length }) );
-        return;
-    }
 
+/*
+    Получение инструкции по гуиду
+    curl -X GET http://localhost:3000/cimages/0C68042E7507-9C2FE1BD33E5-9093DA01
+*/
+app.get('/cimages/:id', ( request, response ) => {
+    let id = request.params['id'];
 
+    let contentFile = util.promisify( fs.readFile ); 
 
-    fs.access(path, (err) => {
-        if (err) {
-            response.sendStatus(404);
-        }
+    contentFile(FOLDER + id + '.cimage', 'utf8')
+    .then( content => {
+        let jsonContent = JSON.parse(content);
+
+        response.send(jsonContent.text);
+    }).catch( error => {
+        response.status('404').send('No file');
     });
 
-    fs.readFile(path, "utf8", (err, data) => {
-        if (err) {
-
-        }
-
-       let instructions = JSON.parse(data); 
-
-       console.log('instructions: ', instructions.text);
-
-        response.send(data);      
-    });
-
-
-    // if (flag) {
-    //     drawer.getFigures(path)
-    //         .then((result) => response.send(result));
-    // } else {
-  
-    // }
+    console.log(id);
 });
 
 /*curl -X POST \
@@ -131,17 +161,28 @@ app.post('/cimages/:id',  jsonParser, (request, response) => {
     }
 
     const path = 'storage/' + guid + '.cimage';
-    const fileContent = fs.readFileSync(path, "utf8");
-    let jsonFileContent = JSON.parse( fileContent );
-    Object.assign(jsonFileContent, request.body);
-    fs.writeFileSync(path, JSON.stringify( jsonFileContent ));
+    let contentFile = util.promisify( fs.readFile ); 
+
+    contentFile(path, "utf8")
+        .then( content => {
+            let jsonContent = JSON.parse( content );
+            Object.assign(jsonContent, request.body);
+
+            let writeFile = util.promisify( fs.writeFile ); 
+   
+            writeFile(path, JSON.stringify( jsonContent ))
+                .then(() => {
+                    response.send('ok');
+                }).catch( error => {
+                    console.log('Error of writing file : ', error);
+                    response.status('400').send('Writing error');
+                });
+
+        }).catch( error => {
+            response.status('404').send('No file');
+        });
     
-    response.send('ok');
 });
-
-
-
-
 
 
 
