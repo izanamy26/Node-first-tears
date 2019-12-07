@@ -1,80 +1,70 @@
-const drawer = require('./drawer.js');
 const http = require('http');
 const util = require('util');
 const express = require('express');
 const fs = require('fs');
+const cache = require('./cache.js');
+const drawer = require('./drawer.js');
 
-const app = express();
+const CACHE_TIME = 5 * 60 * 1000; //ms
+const GUID_KEY = 'guids';
+const COUNT_KEY = 'count';
 const FOLDER = 'storage/';
 
-
+const app = express();
 const jsonParser = express.json();
+const contentFile = util.promisify( fs.readFile ); 
+const writeFile = util.promisify( fs.writeFile ); 
 
+init();
 
-//   curl -H "Content-Type: application/json" -H "iv-user: nastya" -X POST -d '{"text":["rect 6 2 4 10 red"]}' http://localhost:3000/cimages
-// Create the file with instruction
+/*
+    Создание нового файла с инструкцией для отображения
+    curl -H "Content-Type: application/json" -H "iv-user: nastya" -X POST -d '{"text":["rect 6 2 4 10 red"]}' http://localhost:3000/cimages
+*/
 app.post('/cimages', jsonParser, (request, response)=> {
-    console.log('request: ', request.body);
-
-    if(!request.body) 
-        return response.sendStatus(400);
-    
+    if (!request.body) {
+        return response.sendStatus(400);     
+    }
+        
     const text = request.body.text;
     const user = request.headers['iv-user'];     
     const guid = getGuid();
 
-
-    response.send(guid);
     let path = './storage/' + guid + '.cimage';
 
-    fs.writeFile(path, JSON.stringify({user, text, guid}), 'utf8', (err) => {
-        console.log('Error: ', err);
-    });
+    writeFile(path, JSON.stringify({user, text, guid}))
+        .then(result => {
+            getContentAllFiles();
+            response.status('200').send(guid);
+        })
+        .catch(error => response.status('401').send(error));
 });
 
 
 /*
     Получение всех гуидов в папке вообще или конкретного пользователя
     curl -X GET http://localhost:3000/cimages/ -H 'Host: localhost:3000'
-    curl -H "Content-Type: application/json" http://localhost:3000/cimages/?user=margo
 */
 app.get('/cimages/', (request, response) => {
-    const dir = util.promisify(fs.readdir);
     const user = request.query.user;
+
+    cache.get(GUID_KEY)
+        .then(cacheData => {
+            if (!cache.error && cacheData.data !== undefined && cacheData.data.length > 0) {
+                return Promise.resolve(cacheData.data);
+            } 
+                
+            return getContentAllFiles();
+        }).then((result) => {
+            let contents = !user ? result : result.filter((content) => content.user === user);  
+            let guids = contents.map((content) => content.guid);
     
-    dir( FOLDER )
-    .then(( files ) => {
-        if ( user !== undefined ) {
-            let userFiles = [];  
-
-            files.forEach((fileName, index) => {
-                let contentFile = util.promisify( fs.readFile ); 
-                contentFile( FOLDER + fileName, "utf-8" )
-                .then(content => {
-                    let jsonContent = JSON.parse(content);
-
-                    if (jsonContent.user === user) {
-                        userFiles.push(fileName);
-                    }
-
-                    if (index === files.length - 1) { // Уточнить этот вопрос, как в другом месте
-                        response.send(userFiles);
-                    }   
-                }).catch( error => {
-                    console.log('Error of getting content of file: ', error);
-                });
-            });    
-        } else {
-            let guids = files.map((file) => {
-                return file.replace('.cimage', '');
-            });
-        
-            response.send(guids);
-        }    
-    })
-    .catch(( error ) => { 
-        console.log('Error of reading dir: ', error)
-    });
+            response.status(200).send(guids);
+        })
+        .catch(( error ) => { 
+            console.log('Error: ', error);
+            response.status(401).send(`Error: ${error}`);    
+        });;
 });
 
 
@@ -87,31 +77,20 @@ app.get('/stat/cimages', ( request, response ) => {
         response.status('401').send('Неверный запрос');
     }
 
-    const user = Object.keys( request.query )[0];    
-    const dir = util.promisify(fs.readdir);
+    const user = Object.keys( request.query )[0]; 
 
-    dir( FOLDER )
-    .then( files => {
-        let contentFile = util.promisify( fs.readFile ); 
-        let countUserFiles = 0;
+    cache.get(GUID_KEY)
+        .then(cacheData => {
 
-        files.forEach(( fileName, index ) => {
-            contentFile( FOLDER + fileName, "utf-8" )
-                .then(content => {
-                    let jsonContent = JSON.parse(content);
+            if (!cache.error && cacheData.data !== undefined && cacheData.data.length > 0) {
+                return Promise.resolve(cacheData.data.length);
+            } 
 
-                    countUserFiles += Number(jsonContent.user === user);
-
-                    if (index === files.length - 1) { // Уточнить этот вопрос, как в другом месте
-                        response.send(JSON.stringify({ user: user, count: countUserFiles }));
-                    }    
-                }).catch( error => {
-                    console.log('Error of getting content of file: ', error);
-                });
-        });
-    }).catch(error => {
-        console.log( 'Error of getting file\'s stat: ', error );
-    });
+            return getContentAllFiles();
+        }).then(allFiles => {
+            let countUserFiles = allFiles.filter((content) => content.user === user).length;
+            response.status(200).send(JSON.stringify({ user: user, count: countUserFiles }));;
+        });;        
 });
 
 
@@ -122,19 +101,22 @@ app.get('/stat/cimages', ( request, response ) => {
 app.get('/cimages/:id', ( request, response ) => {
     let id = request.params['id'];
 
-    let contentFile = util.promisify( fs.readFile ); 
+    cache.get(GUID_KEY) //есть ли смысл замоорачиваться выносить в отдкльную функци, обработка кешированых данных в callback?
+        .then(cacheData => {
+            if (!cache.error && cacheData.data !== undefined && cacheData.data.length > 0) {
+                response.status(200).send(cacheData.data.filter(file => file.guid === id));
+                return;
+            } 
 
-    contentFile(FOLDER + id + '.cimage', 'utf8')
-    .then( content => {
-        let jsonContent = JSON.parse(content);
-
-        response.send(jsonContent.text);
-    }).catch( error => {
-        response.status('404').send('No file');
-    });
-
-    console.log(id);
+            return contentFile(FOLDER + id + '.cimage', 'utf8');    
+        }).then( data => {
+            let content = JSON.parse(data);
+            response.send(content.text);
+        }).catch( error => {
+            response.status('404').send('No file');
+        });;        
 });
+
 
 /*curl -X POST \
  http://localhost:3000/cimages/0C68042E7507-9C2FE1BD33E5-9093DA01 \
@@ -161,27 +143,20 @@ app.post('/cimages/:id',  jsonParser, (request, response) => {
     }
 
     const path = 'storage/' + guid + '.cimage';
-    let contentFile = util.promisify( fs.readFile ); 
 
     contentFile(path, "utf8")
-        .then( content => {
-            let jsonContent = JSON.parse( content );
-            Object.assign(jsonContent, request.body);
-
-            let writeFile = util.promisify( fs.writeFile ); 
+        .then( data => {
+            let content = JSON.parse(data);
+            Object.assign(content, request.body);
    
-            writeFile(path, JSON.stringify( jsonContent ))
-                .then(() => {
-                    response.send('ok');
-                }).catch( error => {
-                    console.log('Error of writing file : ', error);
-                    response.status('400').send('Writing error');
-                });
-
+            return writeFile(path, JSON.stringify(content));
+        }).then((result) => {
+            getContentAllFiles();
+            response.send('ok');
         }).catch( error => {
-            response.status('404').send('No file');
+            console.log('Error of writing file : ', error);
+            response.status('400').send('Writing error');
         });
-    
 });
 
 
@@ -196,3 +171,28 @@ const getGuid = () => {
     ].join('-').toUpperCase();
 };
 
+function getContentAllFiles() {
+    const dir = util.promisify(fs.readdir);
+
+    return dir( FOLDER )
+        .then(( files ) => {
+                let allFiles = [];
+            
+                 let content = files.reduce((promise, fileName) => {
+                    return promise.then(res => {
+                        return contentFile( FOLDER + fileName, "utf-8" )
+                                .then((content) => {
+                                    allFiles.push(JSON.parse(content));
+                                    return allFiles;
+                                });
+                    });
+                }, Promise.resolve());
+                cache.set(GUID_KEY, allFiles, { inspiredIn: CACHE_TIME });
+
+                return content;
+        });
+}
+
+function init() {
+    getContentAllFiles();
+}
