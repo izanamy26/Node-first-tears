@@ -7,11 +7,11 @@ const drawer = require('./drawer.js');
 
 const CACHE_TIME = 5 * 60 * 1000; //ms
 const GUID_KEY = 'guids';
-const COUNT_KEY = 'count';
-const FOLDER = 'storage/';
+const FOLDER = __dirname + '/storage/';
 
 const app = express();
 const jsonParser = express.json();
+const dir = util.promisify(fs.readdir);
 const contentFile = util.promisify( fs.readFile ); 
 const writeFile = util.promisify( fs.writeFile ); 
 
@@ -29,15 +29,20 @@ app.post('/cimages', jsonParser, (request, response)=> {
     const text = request.body.text;
     const user = request.headers['iv-user'];     
     const guid = getGuid();
+    const data = {user, text, guid};
 
-    let path = './storage/' + guid + '.cimage';
+    let path = FOLDER + guid + '.cimage';
 
-    writeFile(path, JSON.stringify({user, text, guid}))
+    writeFile(path, JSON.stringify(data))
         .then(result => {
-            getContentAllFiles();
+            cache.set(guid, data);
+            init();
             response.status('200').send(guid);
         })
-        .catch(error => response.status('401').send(error));
+        .catch(error => {
+            console.log('Write error: ', error);
+            response.status('401').send(error)
+        });
 });
 
 
@@ -50,10 +55,8 @@ app.get('/cimages/', (request, response) => {
 
     cache.get(GUID_KEY)
         .then(cacheData => {
-            if (!cache.error && cacheData.data !== undefined && cacheData.data.length > 0) {
-                return Promise.resolve(cacheData.data);
-            } 
-                
+            return cacheData;
+        }).catch(error => {
             return getContentAllFiles();
         }).then((result) => {
             let contents = !user ? result : result.filter((content) => content.user === user);  
@@ -70,26 +73,22 @@ app.get('/cimages/', (request, response) => {
 
 /*
     Получение количества файлов по данному пользователю
-    curl -X GET 'http://localhost:3000/stat/cimages?nastya' -H 'Host: localhost:3000'
+    curl -X GET 'http://localhost:3000/stat/cimages?user' -H 'Host: localhost:3000'
 */
 app.get('/stat/cimages', ( request, response ) => {
-    if ( Object.keys(request.query).length !== 1 ) {
-        response.status('401').send('Неверный запрос');
-    }
-
-    const user = Object.keys( request.query )[0]; 
-
     cache.get(GUID_KEY)
         .then(cacheData => {
-
-            if (!cache.error && cacheData.data !== undefined && cacheData.data.length > 0) {
-                return Promise.resolve(cacheData.data.length);
-            } 
-
+            return cacheData;
+        })
+        .catch(error => {
             return getContentAllFiles();
         }).then(allFiles => {
-            let countUserFiles = allFiles.filter((content) => content.user === user).length;
-            response.status(200).send(JSON.stringify({ user: user, count: countUserFiles }));;
+            let stat = allFiles.reduce((all, file) => {
+                all[file.user] = !all[file.user] ? 1 : all[file.user] + 1;
+                return all;
+            }, {});
+
+            response.status(200).send(JSON.stringify(stat));;
         });;        
 });
 
@@ -101,15 +100,10 @@ app.get('/stat/cimages', ( request, response ) => {
 app.get('/cimages/:id', ( request, response ) => {
     let id = request.params['id'];
 
-    cache.get(GUID_KEY) //есть ли смысл замоорачиваться выносить в отдкльную функци, обработка кешированых данных в callback?
-        .then(cacheData => {
-            if (!cache.error && cacheData.data !== undefined && cacheData.data.length > 0) {
-                response.status(200).send(cacheData.data.filter(file => file.guid === id));
-                return;
-            } 
-
-            return contentFile(FOLDER + id + '.cimage', 'utf8');    
-        }).then( data => {
+    cache.get(id)
+        .then(cacheData =>  cacheData
+        ).catch(error => contentFile(FOLDER + id + '.cimage', 'utf8')
+        ).then( data => {
             let content = JSON.parse(data);
             response.send(content.text);
         }).catch( error => {
@@ -142,7 +136,7 @@ app.post('/cimages/:id',  jsonParser, (request, response) => {
         response.status(403).send('Unknown parameters');
     }
 
-    const path = 'storage/' + guid + '.cimage';
+    const path = FOLDER + guid + '.cimage';
 
     contentFile(path, "utf8")
         .then( data => {
@@ -151,7 +145,8 @@ app.post('/cimages/:id',  jsonParser, (request, response) => {
    
             return writeFile(path, JSON.stringify(content));
         }).then((result) => {
-            getContentAllFiles();
+            cache.set(guid, result);
+            init();
             response.send('ok');
         }).catch( error => {
             console.log('Error of writing file : ', error);
@@ -172,27 +167,28 @@ const getGuid = () => {
 };
 
 function getContentAllFiles() {
-    const dir = util.promisify(fs.readdir);
-
     return dir( FOLDER )
         .then(( files ) => {
-                let allFiles = [];
+            let allFiles = [];
             
-                 let content = files.reduce((promise, fileName) => {
-                    return promise.then(res => {
-                        return contentFile( FOLDER + fileName, "utf-8" )
-                                .then((content) => {
-                                    allFiles.push(JSON.parse(content));
-                                    return allFiles;
-                                });
+            let content = files.reduce((promise, fileName) => {
+                return promise.then(res => {
+                    return contentFile( FOLDER + fileName, "utf-8" )
+                        .then((content) => {
+                            allFiles.push(JSON.parse(content));
+                            return allFiles;
+                        });
                     });
                 }, Promise.resolve());
-                cache.set(GUID_KEY, allFiles, { inspiredIn: CACHE_TIME });
 
                 return content;
         });
 }
 
+
 function init() {
-    getContentAllFiles();
-}
+    getContentAllFiles()
+        .then(content => {
+           cache.set(GUID_KEY, content, { inspiredIn: CACHE_TIME });
+        });
+} 

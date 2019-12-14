@@ -4,55 +4,57 @@ const DEFAULT_EXPIRED_PERIOD = 60 * 1000; // (ms)
 
 class Cache {
     constructor() {
-        this.cache = {}; //data, expiredIn
+        this.cache = new Map(); //data, expiredIn
         this.maxKey = 50;
     }
 
     set(key, data, params = {}) {
-        let expiredTime = Number(new Date()) + (params.expiresIn && params.expiresIn > 0 
-                                                ? Number(params.expiresIn) 
-                                                : DEFAULT_EXPIRED_PERIOD);
+        let storageTime = params.expiresIn && params.expiresIn > 0 
+                            ? Number(params.expiresIn) 
+                            : DEFAULT_EXPIRED_PERIOD;
 
-        if (key && data && Object.keys(this.cache).length < this.maxKey) {
-            this.cache[key] = {
-                data: JSON.stringify(data),
-                expiredIn: expiredTime
-            };
-           
-            return Promise.resolve(true);
-        }
-        
-        return Promise.reject(false);
+        if (key && data) {
+            if (this.cache.size >= this.maxKey) { 
+                this.pop();
+            }
+ 
+            this.cache.set(key, data);
+
+            setTimeout(() => {
+                this.delete(key)
+            }, storageTime);
+
+            console.log('Cache set: ', this.cache);    
+
+            return 'Ok';
+        } 
+
+        return new Error('Error of writing cache');
     }
+
 
     get(key) {
-        let response = {
-            error: 0
-        };
-
-        if (key && this.cache[key]) {
-             let currentTime = Number(new Date());
-             
-             if (currentTime < this.cache[key].expiredIn) {
-                 response.data = JSON.parse(this.cache[key].data);
-             } else {
-                 this.delete(key);
-                 response.error = 1;
-                 response.message = 'Time is expired, data is removed';
-             }  
-        } else {
-            response.error = 1;
-            response.message = `Unknown key ${key}`;
+        if (!key || !this.cache.has(key)) {
+            /* return new Error(`Unknown ${key}`); */
+            return Promise.reject(`Unknown ${key}`);
         }
 
-        return Promise.resolve(response);
+        return Promise.resolve(this.cache.get(key)); 
     }
 
+
     delete(key) {
-        if (key && this.cache[key]) {
-            delete this.cache[key];
-            return Promise.resolve(true);
+        if (!key || !this.cache.has(key)) {
+            return new Error(`Unknown ${key}`);
         }
+       
+        this.cache.delete(key);
+        return 'Ok';
+    }
+
+    pop() {
+        const first = Array.from(this.cache.keys())[0];
+        this.delete(first);
     }
 }
 
