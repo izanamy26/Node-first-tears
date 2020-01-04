@@ -48,8 +48,6 @@ router.post('/', (request, response, next)=> {
 router.get('/', (request, response) => {
     const user = request.query.user;
 
-    console.log('User: ', user);
-
     const guidList = (user === undefined) ? action.getAllGuids() : action.getUserGuids(user);
 
     guidList
@@ -80,7 +78,7 @@ router.get('/:id', ( request, response ) => {
 
 /*
     Получение изображения по гуиду
-    curl -X GET http://localhost:3000/cimagesшьфпу//0C68042E7507-9C2FE1BD33E5-9093DA01
+    curl -X GET http://localhost:3000/cimages/image/6FE49CF67012-1DF074CDCD81-9706122E
 */
 router.get('/image/:id', ( request, response ) => {
     const id = request.params['id'];

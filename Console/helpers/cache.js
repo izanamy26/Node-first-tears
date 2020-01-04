@@ -45,7 +45,7 @@ class Cache {
         }
        
         this.cache.delete(key);
-        return 'Ok';
+        return true;
     }
 
     pop() {
