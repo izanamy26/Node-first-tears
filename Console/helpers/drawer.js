@@ -1,63 +1,68 @@
-const fs = require('fs');
-
-/*const colors = {
-    Reset: "\x1b[0m",
-    Bright: "\x1b[1m",
-    Dim: "\x1b[2m",
-    Underscore: "\x1b[4m",
-    Blink: "\x1b[5m",
-    Reverse: "\x1b[7m",
-    Hidden: "\x1b[8m",
-    fg: {
-     Black: "\x1b[30m",
-     Red: "\x1b[31m",
-     Green: "\x1b[32m",
-     Yellow: "\x1b[33m",
-     Blue: "\x1b[34m",
-     Magenta: "\x1b[35m",
-     Cyan: "\x1b[36m",
-     White: "\x1b[37m",
-     Crimson: "\x1b[38m" //القرمزي
-    },
-    bg: {
-     Black: "\x1b[40m",
-     Red: "\x1b[41m",
-     Green: "\x1b[42m",
-     Yellow: "\x1b[43m",
-     Blue: "\x1b[44m",
-     Magenta: "\x1b[45m",
-     Cyan: "\x1b[46m",
-     White: "\x1b[47m",
-     Crimson: "\x1b[48m"
-    }
-   };
-   console.log(colors.bg.Blue, colors.fg.White , "I am white message with blue background", colors.Reset) ;*/
+const params = require('../config/drawer');
 
 const Drawer = {
-    checkInstructions: (instructions) => {
+    validateInstruction: ( instruction ) => {
+        return instruction.every((inst) => {
+            let args = inst.split(' ');
+            let color, fill;
+            const shape = args[0];
+            const x = checkNumber(args[1]);
+            const y = checkNumber(args[2]);
 
+            if (x > params.maxWidht && y > params.maxHeight) {
+                return false;
+            }
+
+            switch (shape) {
+                case 'rect': 
+                    let height = checkNumber(args[3]);
+                    let width = checkNumber(args[4]);
+                    color = checkString(args[5]);
+                    fill = checkString(args[6]);
+                    
+                    return !!(x && y && height && width && color
+                            && x + width <= params.maxWidht && y + height <= params.maxHeight
+                            && params.colors.includes(color)
+                            && (!fill || params.fill.includes(fill)));
+
+                case 'line':
+                    const weight = checkNumber(args[3]);
+                    const position = checkString(args[4]);
+                    color = checkString(args[5]);
+                    fill = checkString(args[6]);
+                    
+                    return !!(weight && position && color && fill
+                        && (position === 'row' && x + weight <= params.maxWidht
+                            || position === 'column' && y + weight <= params.maxHeight)
+                        && params.colors.includes(color)
+                        && (!fill || params.fill.includes(fill)));   
+
+                case 'text':
+                    color = checkString(args[3]); 
+                    const text = args.slice(4).join(' ');
+                    
+                    return !!(text.length > 0 && params.colors.includes(color))
+                
+                default:
+                    return false;    
+
+            };
+        });
     },
 
     getFigures: (instructions) => {
-        console.log('instructions:  ', instructions);
        return new Promise((resolve, reject) => {      // Promise { <pending> }
-            resolve(()=> {
-               
-
+            resolve((()=> {
                 let figures = instructions.map((item) => {
                     let [figure, ...params] = item.split(' '); 
 
                     return Drawer.handlers[figure](params);
                 });
 
-                console.log('figures: ', figures);    
-
-                let canvas = joinCanvases(figures);     
-
-                console.log('canvas: ', canvas);
-            
+                let canvas = joinCanvases(figures);   
+                
                 return canvas;
-            });
+            })());
        });
     },
 
@@ -184,5 +189,9 @@ const joinCanvases = (figures) => {
 
     return canvas;
 }
+
+const checkNumber = (data) => isFinite(data) ? Number(data) : false;
+
+const checkString = (data) => (data !== undefined && data !== '') ? data : false;
 
 module.exports = Drawer;
