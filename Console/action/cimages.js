@@ -48,8 +48,6 @@ module.exports = {
 
     getContentFile: ( id ) => {
         return cache.get(id)
-            .then(cacheData => 
-                cacheData)
             .catch(error => 
                 contentFile( process.cwd() + params.storageFolder + id + params.fileExt, 'utf8'));
     },
